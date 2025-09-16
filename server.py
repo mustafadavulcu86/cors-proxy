@@ -1,33 +1,32 @@
 # -*- coding: utf-8 -*-
 
-
-import flask
+from flask import Flask, request, Response
 import requests
+import os
 
-app = flask.Flask(__name__)
+app = Flask(__name__)
 
-method_requests_mapping = {
-    'GET': requests.get,
-    'HEAD': requests.head,
-    'POST': requests.post,
-    'PUT': requests.put,
-    'DELETE': requests.delete,
-    'PATCH': requests.patch,
-    'OPTIONS': requests.options,
-}
-
-
-@app.route('/<path:url>', methods=method_requests_mapping.keys())
+@app.route('/<path:url>', methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 def proxy(url):
-    requests_function = method_requests_mapping[flask.request.method]
-    request = requests_function(url, stream=True, params=flask.request.args)
-    response = flask.Response(flask.stream_with_context(request.iter_content()),
-                              content_type=request.headers['content-type'],
-                              status=request.status_code)
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    return response
+    target_url = f"https://{url}"
 
+    headers = {k: v for k, v in request.headers if k.lower() != "host"}
+    data = request.get_data()
 
-if __name__ == '__main__':
-    app.debug = True
-    app.run()
+    resp = requests.request(
+        method=request.method,
+        url=target_url,
+        headers=headers,
+        params=request.args,
+        data=data
+    )
+
+    excluded_headers = ["content-encoding", "transfer-encoding", "connection"]
+    headers = [(name, value) for (name, value) in resp.raw.headers.items()
+               if name.lower() not in excluded_headers]
+
+    return Response(resp.content, resp.status_code, headers)
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))  # Render bize PORT env veriyor
+    app.run(host="0.0.0.0", port=port, debug=False)
